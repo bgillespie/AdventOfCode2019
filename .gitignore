@@ -3,4 +3,5 @@
 **/*.rs.bk
 *.code-workspace
 .vscode
+.DS_Store
 
