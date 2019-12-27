@@ -1,12 +1,12 @@
 use std::io::{self,BufRead};
 use std::str::FromStr;
 use std::fs;
-use std::path::{Path,PathBuf};
+use std::path::PathBuf;
 use std::env;
 use std::fmt::Debug;
 
 const DATA_DIR_ENV_VAR: &str = "AOC2019_DATA";
-const DATA_DIR: &str = "/home/bjg/Projects/aoc2019/data/day";
+pub const F32_RAD_TO_DEG: f32 = 180f32 / std::f32::consts::PI;
 
 #[derive(Debug)]
 pub enum Error {
@@ -26,7 +26,7 @@ impl From<io::Error> for Error {
 fn data_root() -> Result<PathBuf,Error> {
     match env::var(DATA_DIR_ENV_VAR) {
         Err(_) => Err(Error::DataDirEnvVarNotSet),
-        Ok(val) => Ok(PathBuf::from_str(DATA_DIR).unwrap())
+        Ok(val) => Ok(PathBuf::from_str(&val).unwrap())
     }
 }
 
@@ -45,7 +45,6 @@ pub fn path_to_data_file(day: &str, file: &str)
         let mut path = data_root()?;
         path.push(day_path);
         path.push(file_path);
-        println!("{:?}", path);
         Ok(path)
     }
 }
