@@ -5,7 +5,7 @@ const TARGET: isize = 19690720;
 
 pub fn run() {
     let original = 
-        file_to_string("day/2/input")
+        data_file_to_string("2", "input").unwrap()
             .split(',')
             .map(|i| i.trim())
             .filter(|i| i.len() > 0)

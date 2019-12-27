@@ -2,8 +2,6 @@ use std::cmp::{min,max};
 
 use crate::common::*;
 
-const SOURCE_DATA: &str = "day/3/input";
-
 type Coords = (isize, isize);
 
 #[derive(PartialEq,Debug,Clone)]
@@ -199,7 +197,7 @@ fn test_steps_in() {
 
 
 pub fn part1() {
-    let source = file_to_string(SOURCE_DATA);
+    let source = data_file_to_string("3", "input").unwrap();
     let moves = rows_of_moves(source);
     let lines = rows_of_lines(&moves);
     let crossings = crossings(&lines[0], &lines[1]);
@@ -215,7 +213,7 @@ pub fn part1() {
 
 
 pub fn part2() {
-    let source = file_to_string(SOURCE_DATA);
+    let source = data_file_to_string("3", "input").unwrap();
     let moves = rows_of_moves(source);
     let lines = rows_of_lines(&moves);
     let crossings = crossings(&lines[0], &lines[1]);

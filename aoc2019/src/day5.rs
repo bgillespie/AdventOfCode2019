@@ -3,7 +3,7 @@ use crate::intcode::Intcode;
 
 pub fn run() {
     let original = 
-        file_to_string("day/5/input")
+        data_file_to_string("5", "input").unwrap()
             .split(',')
             .map(|i| i.trim())
             .filter(|i| i.len() > 0)
