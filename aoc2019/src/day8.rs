@@ -72,7 +72,7 @@ impl Sif {
 
 pub fn run() {
     let image_data = 
-        file_to_string("day/8/input")
+        data_file_to_string("8", "input").unwrap()
             .chars()
             .filter(|c| c.is_digit(10))
             .map(|i| i.to_string().parse::<u8>().unwrap())

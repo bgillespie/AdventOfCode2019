@@ -11,7 +11,7 @@ fn calc_fuel(mass: isize) -> isize {
 }
 
 pub fn run() {
-    let source = file_to_string("day/1/input");
+    let source = data_file_to_string("1", "input").unwrap();
     let lines = 
         source
             .split("\n")
