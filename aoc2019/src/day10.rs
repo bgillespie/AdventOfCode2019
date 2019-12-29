@@ -1,23 +1,68 @@
 use std::convert::From;
 use std::path::PathBuf;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
+use std::cmp::PartialEq;
 use crate::common::*;
 
+// Angle multiplier for accuracy
+const ANGLE_MULT: f32 = 100.0;
+// Angle*ANGLE_MULT (from upright) and square of distance
+type Dist2 = usize;
+type AngleM = usize;
+type Polar = (AngleM, Dist2);
+type AsteroidIdx = usize;
+
+/*
+ * ASTEROID
+ */
+
+struct Asteroid {
+    x: usize,
+    y: usize,
+    lines_of_sight: BTreeMap<AngleM, BTreeMap<Dist2,AsteroidIdx>>,
+}
+
+/// If asteroids are at the exact same position, then they're the
+/// same asteroid, for the purposes of this
+impl PartialEq for Asteroid {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y
+    }
+}
+
+impl Asteroid {
+    fn new(x: usize, y: usize) -> Asteroid {
+        Asteroid { x, y, lines_of_sight: BTreeMap::new() }
+    }
+
+    /// Calculate Polar of an asteroid relative to this one.
+    fn polar(&self, other: &Asteroid) -> Polar {
+        let px = other.x as isize - self.x as isize;
+        let py = other.y as isize - self.y as isize;
+        let dist2 = (px.pow(2) + py.pow(2)) as Dist2;
+        let anglem = f32::atan2(py as f32, px as f32)
+                    * 180f32 / std::f32::consts::PI;
+        let anglem = (((anglem + 450f32) % 360f32) * ANGLE_MULT) as AngleM;
+        (anglem, dist2)
+    }
+}
+
+
+/*
+ * BELT
+ */
+
 struct Belt {
-    asteroids: Vec<(usize,usize)>,
-    width    : usize,
-    height   : usize,
+    asteroids: Vec<Asteroid>,
 }
 
 impl From<&PathBuf> for Belt {
-    /// "Convert" a path to a file into a Belt with all the
-    /// asteroids, if it doesn't crash for some reason.
+    /// "Convert" a file-path into a Belt with all the
+    /// Asteroids, if it doesn't crash for some I/O reason.
     fn from(path: &PathBuf) -> Self {
-        let mut width = 0;
-        let mut height = 0;
-        let mut asteroids:Vec<(usize,usize)> = Vec::new();
+        // Read lines from the input and convert them to new Asteroids
+        let mut asteroids:Vec<Asteroid> = Vec::new();
         for (y, line) in data_lines(path).enumerate() {
-            height = y;
             let mut line = match line {
                 Ok(s) => s,
                 Err(e) => panic!("{:?}", e.into()),
@@ -26,125 +71,98 @@ impl From<&PathBuf> for Belt {
             if line.len() == 0 {
                 continue;
             }
-            else {
-                width = std::cmp::max(width, line.len())
-            }
             line
                 .chars()
                 .enumerate()
                 .filter(|(_, c)| *c == '#')
                 .map(|(x, _)| x)
-                .for_each(|x| asteroids.push((x, y)));
+                .for_each(|x| asteroids.push(Asteroid::new(x, y)));
         }
-        Belt { asteroids, width, height }
+
+        // Initialize all the lines of sight for every asteroid
+        let mut polar;
+        for i_pov in 0..asteroids.len() {
+            polar = Belt::calc_lines_of_sight(i_pov, &asteroids);
+            asteroids[i_pov].lines_of_sight = polar;
+        }
+        Belt { asteroids }
     }
 }
+
 
 impl Belt {
-    /// Place an asteroid on a path, relative to an observation point.
-    /// cx, cy - observation point; ax, ay - asteroid
-    fn path_of(cx: usize, cy: usize, ax: usize, ay: usize) -> (isize, isize) {
-        let mut px = ax as isize - cx as isize;
-        let mut py = ay as isize - cy as isize;
-        let gcd = gcd(px, py);
-        px /= gcd;
-        py /= gcd;
-        (px, py)
-    }
 
-    /// Get asteroids at each angle.
-    /// Return mapping of angle to vec of asteroid indices, in order of closest first.
-    fn visible_asteroids(&self, cx:usize, cy:usize) -> HashMap<usize, Vec<usize>> {
-
-        // First get mapping of angle to vec of asteroids at that angle
-        let mut visible: HashMap<usize, Vec<usize>> = HashMap::new();
-        for (i, (ax, ay)) in self.asteroids.iter().enumerate() {
-            // exclude central point
-            if *ax == cx && *ay == cy {
-                continue;
-            }
-            // determine angle to use as key
-            let angle = (
-                f32::atan2(
-                    (cy as isize - *ay as isize) as f32,
-                    (cx as isize - *ax as isize) as f32
-                ) * F32_RAD_TO_DEG
-            ) as usize;
-            visible.entry(angle).or_insert(Vec::new()).push(i);
-        }
-
-        // Now sort all vecs of asteroids by closeness to focal point
-        for v in visible.values_mut() {
-            v.sort_by(
-                |i, j| {
-                    let (ix, iy) = self.asteroids[*i];
-                    let (jx, jy) = self.asteroids[*j];
-                    let i_size = (cx as isize - ix as isize).pow(2) + (cy as isize - iy as isize).pow(2);
-                    let j_size = (cx as isize - jx as isize).pow(2) + (cy as isize - jy as isize).pow(2);
-                    if i_size < j_size {
-                        std::cmp::Ordering::Less
-                    }
-                    else if i_size > j_size {
-                        std::cmp::Ordering::Greater
-                    }
-                    else {
-                        std::cmp::Ordering::Equal
-                    }
-                }
-            );
-        }
-        visible
-    }
-
-    fn best_station(&self) -> (usize, HashMap<usize, Vec<usize>>) {
-        let mut best_index: usize = 0;
-        let mut best_count: usize = 0;
-        let mut best_visibles = HashMap::new();
-        let mut visibles;
-        let mut count: usize;
-        for index in 0..self.asteroids.len() {
-            let (cx, cy) = self.asteroids[index];
-            visibles = self.visible_asteroids(cx, cy);
-            count = visibles.len();
-            if count > best_count {
-                best_count = count;
-                best_index = index;
-                best_visibles = visibles;
+    /// For every line of sight, map distance to asteroid (index)
+    fn calc_lines_of_sight(i_pov: AsteroidIdx, asteroids: &Vec<Asteroid>) 
+    -> BTreeMap<AngleM, BTreeMap<Dist2,AsteroidIdx>> {
+        let pov = &asteroids[i_pov];
+        let mut polars: BTreeMap<AngleM,BTreeMap<Dist2,AsteroidIdx>> = 
+            BTreeMap::new();
+        let mut polar;
+        for (i, asteroid) in asteroids.iter().enumerate() {
+            if i != i_pov {  // ignore pov asteroid
+                polar = pov.polar(asteroid);
+                polars
+                    .entry(polar.0)
+                    .or_insert(BTreeMap::new())
+                    .insert(polar.1, i);
             }
         }
-        (best_index, best_visibles)
+        polars
     }
+
+    /// Find the asteroid with best visibility of other asteroids.
+    /// Whichever has most lines of sight wins.
+    fn best_visibility(&self) -> &Asteroid {
+        self.asteroids
+            .iter()
+            .fold(&self.asteroids[0],
+                  |acc, i|
+                  if i.lines_of_sight.len() > acc.lines_of_sight.len() {
+                      i
+                  }
+                  else {
+                      acc
+                  }
+                )
+    }
+
 }
 
-#[test]
-fn test() {
-}
 
 pub fn run() {
-    let path = match path_to_data_file("10", "example_4") {
+    // load the asteroid field
+    let path = match path_to_data_file("10", "input") {
         Err(e) => panic!("{:?}", e),
         Ok(p) => p
     };
     let belt = Belt::from(&path);
-    let (best_index, best_visibles) = belt.best_station();
-    let (x, y) = belt.asteroids[best_index];
-    println!("{}, {} => {}", x, y, best_visibles.len());
-    
-    let mut best_visibles = best_visibles;
+
+    // Show how many asteroids and the one that can see the most
+    println!("{}", belt.asteroids.len());
+    let pov = belt.best_visibility();
+    println!("{}, {} => {}", pov.x, pov.y, pov.lines_of_sight.len());
+
+    // iterate over iterators in each line of sight
+    // all ordered by key bcoz btreemaps
+    let mut los_iter = pov.lines_of_sight
+        .values()  // values: Dist2 => AsteroidIdx 
+        .map(|di|
+             di.values())  // each is now AsteroidIdx
+        .collect::<Vec<_>>();
     let mut count = 0;
-    'laser: loop {
-        let mut angles:Vec<usize> = best_visibles.keys().map(|i| *i).collect();
-        angles.sort();
-        for angle in angles {
-            if best_visibles[&angle].len() > 0 {
+    let mut andidx: usize = 0;
+    'layzur: loop {
+        for ang in &mut los_iter {
+            if let Some(a) = ang.next() {
+                andidx = *a;
                 count += 1;
-                let (x, y) = belt.asteroids[best_visibles[&angle][0]];
-                best_visibles.entry(angle).and_modify(|v| {v.remove(0);});
-                println!("{} => ({}, {})", count, x, y);
                 if count == 200 {
-                    break 'laser
+                    break 'layzur;
                 }
             }
         }
     }
+    let lasteroid = &belt.asteroids[andidx];
+    println!("RAH!!! {}, {}", lasteroid.x, lasteroid.y);
 }
