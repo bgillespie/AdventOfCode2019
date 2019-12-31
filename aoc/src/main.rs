@@ -7,5 +7,5 @@ fn main() {
     //aoc2019::day4::part1();
     //aoc2019::day5::run();
     //aoc2019::day6::run();
-    aoc2019::day10::run();
+    aoc2019::day12::run();
 }
